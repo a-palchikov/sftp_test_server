@@ -1,6 +1,4 @@
-// An example SFTP server implementation using the golang SSH package.
-// Serves the whole filesystem visible to the user, and has a hard-coded username and password,
-// so not for real use!
+// SFTP test server implementation using the Go SSH package.
 package main
 
 import (
@@ -18,9 +16,8 @@ import (
 
 var debugStream io.Writer
 
-// Based on example server code from golang.org/x/crypto/ssh and server_standalone
+// Based on example server code from golang.org/x/crypto/ssh and server_standalone from github.com/pkg/sftp
 func main() {
-
 	var (
 		readOnly               bool
 		debugStderr            bool
@@ -46,8 +43,6 @@ func main() {
 	// certificate details and handles authentication of ServerConns.
 	config := &ssh.ServerConfig{
 		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
-			// Should use constant-time compare (or better, salt+hash) in
-			// a production setting.
 			debug("Login: %s", c.User())
 			if c.User() == authUser && string(pass) == authPassword {
 				return nil, nil
@@ -68,6 +63,7 @@ func main() {
 
 	config.AddHostKey(private)
 
+	// Once a ServerConfig has been configured, connections can be
 	// accepted.
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -76,17 +72,18 @@ func main() {
 	log.Printf("Listening on %v\n", listener.Addr())
 
 	for {
-		// Once a ServerConfig has been configured, connections can be
 		nConn, err := listener.Accept()
 		if err != nil {
-			log.Fatal("failed to accept incoming connection", err)
+			log.Printf("failed to accept incoming connection: %v\n", err)
+			continue
 		}
 
 		// Before use, a handshake must be performed on the incoming
 		// net.Conn.
 		_, chans, reqs, err := ssh.NewServerConn(nConn, config)
 		if err != nil {
-			log.Fatal("failed to handshake", err)
+			log.Printf("failed to handshake: %v\n", err)
+			continue
 		}
 		debug("SSH server established")
 
@@ -106,7 +103,8 @@ func main() {
 			}
 			channel, requests, err := newChannel.Accept()
 			if err != nil {
-				log.Fatal("could not accept channel.", err)
+				log.Printf("could not accept channel: %v\n", err)
+				continue
 			}
 			debug("Channel accepted")
 
@@ -137,10 +135,12 @@ func main() {
 
 			server, err := sftp.NewServer(channel, channel, options...)
 			if err != nil {
-				log.Fatal(err)
+				log.Printf("cannot start server: %v\n", err)
+				continue
 			}
 			if err := server.Serve(); err != nil && err != io.EOF {
-				log.Fatal("sftp server completed with error:", err)
+				log.Printf("server completed with error: %v\n", err)
+				continue
 			}
 		}
 	}
